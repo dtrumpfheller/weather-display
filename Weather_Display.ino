@@ -104,7 +104,6 @@ int numberLocations = 0;
 HistoryData historyData[3];
 
 long StartTime  = 0;
-long SleepTimer = 0;
 
 GFXfont currentFont;
 
@@ -215,12 +214,17 @@ void beginSleep() {
   // configure GPIO34 as ext0 wake up source for LOW logic level
   esp_sleep_enable_ext0_wakeup(GPIO_NUM_34, 0); 
 
-  // configure timer; some ESP32 have a RTC that is too fast to maintain accurate time, so add an offset
-  SleepTimer = (sleepDuration * 60 - ((CurrentMin % sleepDuration) * 60 + CurrentSec)) + delta;
-  esp_sleep_enable_timer_wakeup(SleepTimer * 1000000LL); // in seconds, 1000000LL converts to seconds as unit = 1us
+  // configure timer
+  long sleepTimer = (sleepDuration * 60 - ((CurrentMin % sleepDuration) * 60 + CurrentSec));
+  if (sleepTimer < 300) {
+    // some ESP32 have a RTC that is too fast to maintain accurate time
+    // so skip next wake up if it is within next 5 minutes
+    sleepTimer += sleepDuration * 60;
+  }
+  esp_sleep_enable_timer_wakeup(sleepTimer * 1000000LL); // in seconds, 1000000LL converts to seconds as unit = 1us
 
   Serial.println("Awake for " + String((millis() - StartTime) / 1000.0, 3) + "s");
-  Serial.println("Entering " + String(SleepTimer) + "s of sleep time");
+  Serial.println("Entering " + String(sleepTimer) + "s of sleep time");
   Serial.println("Starting deep-sleep period...");
 
   esp_deep_sleep_start();
