@@ -10,9 +10,11 @@ typedef struct { // For current Day and Day 1, 2, 3, etc
   String Forecast0;
   String Description;
   float  Temperature;
+  float  TemperatureCurrent;
   float  FeelsLike;
   float  DewPoint;
   float  Humidity;
+  float  HumidityCurrent;
   float  High;
   float  Low;
   float  Winddir;

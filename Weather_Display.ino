@@ -215,6 +215,7 @@ void beginSleep() {
   esp_sleep_enable_ext0_wakeup(GPIO_NUM_34, 0); 
 
   // configure timer
+  updateLocalTime(); // ensure CurrentMin and CurrentSec are up-to-date
   long sleepTimer = (sleepDuration * 60 - ((CurrentMin % sleepDuration) * 60 + CurrentSec));
   if (sleepTimer < 300) {
     // some ESP32 have a RTC that is too fast to maintain accurate time
@@ -242,10 +243,12 @@ void showWeather() {
     byte attempts = 1;
     bool RxWeather  = false;
     bool RxForecast = false;
+    bool RxCurrent = false;
     WiFiClient client;
-    while ((RxWeather == false || RxForecast == false) && attempts <= 2) { // try up-to 2 time for Weather and Forecast data
+    while ((RxWeather == false || RxForecast == false || RxCurrent == false) && attempts <= 2) { // try up-to 2 time for Weather and Forecast data
       if (RxWeather == false) RxWeather = obtainWeatherData(client, "onecall");
       if (RxForecast == false) RxForecast = obtainWeatherData(client, "forecast");
+      if (RxCurrent == false) RxCurrent = obtainCurrentData(client);
       attempts++;
     }
     stopWiFi(); // not needed anymore, reduces power consumption
@@ -384,6 +387,60 @@ bool decodeHistory(WiFiClient& json) {
         historyData[locationCounter].hasCo2 = true;
       } else {
         historyData[locationCounter].hasCo2 = false;
+      }
+    }
+    locationCounter++;
+  }
+
+  return true;
+}
+
+bool obtainCurrentData(WiFiClient & client) {
+  Serial.println("Requesting current weather");
+  client.stop(); // close connection before sending a new request
+  HTTPClient http;
+  http.begin(client, influxDb2Agent +"/current");
+  int httpCode = http.GET();
+  if (httpCode == HTTP_CODE_OK) {
+    if (!decodeCurrent(http.getStream())) return false;
+    client.stop();
+  } else {
+    Serial.printf("connection failed, error: %s\n", http.errorToString(httpCode).c_str());
+    client.stop();
+    http.end();
+    return false;
+  }
+  http.end();
+  return true;
+}
+
+bool decodeCurrent(WiFiClient& json) {
+  DynamicJsonDocument doc(64 * 1024);
+  DeserializationError error = deserializeJson(doc, json);
+  if (error) {
+    Serial.print(F("deserializeJson() failed: "));
+    Serial.println(error.c_str());
+    return false;
+  }
+  JsonArray root = doc.as<JsonArray>();
+  Serial.println("Decoding InfluxDB2 current weather data");
+  int locationCounter = 0;
+  numberLocations = root.size();
+  for (JsonObject location : root) {
+    if (location.containsKey("temperature")){
+      JsonArray temperature = location["temperature"];
+      if (temperature.size() > 0){
+        WxConditions[0].TemperatureCurrent = temperature[0];
+      } else {
+        WxConditions[0].TemperatureCurrent = 999;
+      }
+    }
+    if (location.containsKey("humidity")){
+      JsonArray humidity = location["humidity"];
+      if (humidity.size() > 0) {
+        WxConditions[0].HumidityCurrent = humidity[0];
+      } else {
+        WxConditions[0].HumidityCurrent = 999;
       }
     }
     locationCounter++;
@@ -609,13 +666,27 @@ String WindDegToOrdinalDirection(float winddirection) {
 
 void DisplayTempHumiPressSection(int x, int y) {
   setFont(OpenSans18B);
-  drawString(x - 30, y, String(WxConditions[0].Temperature, 1) + "°   " + String(WxConditions[0].Humidity, 0) + "%", LEFT);
+  if (ownWeather) {
+   drawString(x - 30, y, String(WxConditions[0].TemperatureCurrent, 1) + "°   " + String(WxConditions[0].HumidityCurrent, 0) + "%", LEFT);
+  } else {
+    drawString(x - 30, y, String(WxConditions[0].Temperature, 1) + "°   " + String(WxConditions[0].Humidity, 0) + "%", LEFT);
+  }
   setFont(OpenSans12B);
   DrawPressureAndTrend(x + 195, y + 15, WxConditions[0].Pressure, WxConditions[0].Trend);
   int Yoffset = 42;
-  if (WxConditions[0].Windspeed > 0) {
-    drawString(x - 30, y + Yoffset, String(WxConditions[0].FeelsLike, 1) + "° FL", LEFT);   // Show FeelsLike temperature if windspeed > 0
+  if (ownWeather){
+    String text = "";
+    if (WxConditions[0].Windspeed > 0) { // Show FeelsLike temperature if windspeed > 0
+      text += String(WxConditions[0].FeelsLike, 1) + "° FL";
+    }
+    text += "   " + String(WxConditions[0].Temperature, 1) + "°   " + String(WxConditions[0].Humidity, 0) + "%";
+    drawString(x - 30, y + Yoffset, text, LEFT);
     Yoffset += 30;
+  } else {
+    if (WxConditions[0].Windspeed > 0) { // Show FeelsLike temperature if windspeed > 0
+      drawString(x - 30, y + Yoffset, String(WxConditions[0].FeelsLike, 1) + "° FL", LEFT);
+      Yoffset += 30;
+    }
   }
   drawString(x - 30, y + Yoffset, String(WxConditions[0].High, 0) + "° | " + String(WxConditions[0].Low, 0) + "° Hi/Lo", LEFT); // Show forecast high and Low
 }

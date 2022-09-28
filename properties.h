@@ -18,6 +18,7 @@ const int daylightOffset_sec  = 0;                              // in the UK DST
 const long sleepDuration      = 30;                             // sleep time in minutes, aligned to the nearest minute boundary, so if 30 will always update at 00 or 30 past the hour
 const int wakeupHour          = 7;                              // wakeup after 07:00 to save battery power
 const int sleepHour           = 23;                             // sleep after 23:00 to save battery power
+const boolean ownWeather      = true;                           // weather own weather data should be shown
 
 // openweathermap.org properties
 const String apikey           = "<API>";                        // OWM API key
